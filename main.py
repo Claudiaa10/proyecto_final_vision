@@ -20,7 +20,7 @@ def create_masks():
         img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         imgs_secuencia2.append(img_hsv)
 
-    light_yellow = (20, 100, 100)
+    light_yellow = (10, 80, 80)
     dark_yellow = (30, 255, 255)
 
     for img in imgs_secuencia1:
@@ -56,8 +56,8 @@ def similarity_percentage(mask1, mask2):
 
 def stream_and_compare():
     create_masks()
-    light_yellow = (15, 50, 50) 
-    dark_yellow = (45, 255, 255)
+    light_yellow = (10, 80, 80)
+    dark_yellow = (40, 255, 255)
  
     picam = Picamera2()
     picam.preview_configuration.main.size = (1280, 720)
@@ -81,28 +81,30 @@ def stream_and_compare():
         if key == ord('q'): 
             break
         elif key == ord('f'): 
-            frame_hsv = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)  # Convierte a HSV
             save_folder = "/home/pi/practica_vision/fotos"
             os.makedirs(save_folder, exist_ok=True)
             save_path = os.path.join(save_folder, "foto_actual.jpg")
             cv2.imwrite(save_path, frame)
 
+            img = cv2.imread(f'fotos/foto_actual.jpg')
+            frame_hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)  # Convierte a HSV
+
             img_yellow_mask = cv2.inRange(frame_hsv, light_yellow, dark_yellow)  # Filtra amarillo
             save_path = os.path.join(save_folder, "foto_actual_segmentada.jpg")
             cv2.imwrite(save_path, img_yellow_mask)
 
-            similarity_ge = similarity_percentage(img_yellow_mask, masks_ge[sequence_ge_counter])
-            similarity_ne = similarity_percentage(img_yellow_mask, masks_ne[sequence_ne_counter])
-            if similarity_ge > 90:  
+            similarity_ge = similarity_percentage(masks_ge[sequence_ge_counter], img_yellow_mask)
+            similarity_ne = similarity_percentage(masks_ne[sequence_ne_counter], img_yellow_mask)
+            if similarity_ge > 70:  
                 print(f"Foto coincide con máscara ge_{sequence_ge_counter}, similitud: {similarity_ge:.2f}%")
                 sequence_ge_counter += 1
                 sequence_ne_counter = 0  
-            elif similarity_ne > 90:  
+            elif similarity_ne > 70:  
                 print(f"Foto coincide con máscara ne_{sequence_ne_counter}, similitud: {similarity_ne:.2f}%")
                 sequence_ne_counter += 1
                 sequence_ge_counter = 0 
             else:
-                print("Foto no coincide con ninguna máscara, reiniciando...")
+                print("Foto no coincide con ninguna máscara, similitud: {similarity_ge:.2f}%, reiniciando...")
                 sequence_ge_counter = 0
                 sequence_ne_counter = 0
 
@@ -112,6 +114,10 @@ def stream_and_compare():
             elif sequence_ne_counter == 4:
                 print("Secuencia noche estrellada completada.")
                 break
+
+            cv2.imshow("Frame HSV", frame_hsv)
+            cv2.imshow("Segmented Mask", img_yellow_mask)
+
 
     cv2.destroyAllWindows()
 
