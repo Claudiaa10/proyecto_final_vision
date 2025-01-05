@@ -13,15 +13,17 @@ def create_masks():
     for i in range(1, 5):
         img = cv2.imread(f'emojis/secuencia_ge_{i}.jpg')
         img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        img_hsv = cv2.GaussianBlur(img_hsv, (5, 5), 0)
         imgs_secuencia1.append(img_hsv)
 
     for i in range(1, 5):
         img = cv2.imread(f'emojis/secuencia_ne_{i}.jpg')
         img_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        img_hsv = cv2.GaussianBlur(img_hsv, (5, 5), 0)
         imgs_secuencia2.append(img_hsv)
 
     light_yellow = (10, 80, 80)
-    dark_yellow = (30, 255, 255)
+    dark_yellow = (40, 255, 255)
 
     for img in imgs_secuencia1:
         yellow_mask = cv2.inRange(img, light_yellow, dark_yellow)
@@ -43,6 +45,20 @@ def create_masks():
         cv2.imwrite(save_path, img)   
 
 
+
+def translate_and_compare(frame_mask, reference_mask, max_shift=10):
+    best_similarity = 0
+    best_shift = (0, 0)
+
+    for dx in range(-max_shift, max_shift + 1):
+        for dy in range(-max_shift, max_shift + 1):
+            shifted_mask = np.roll(frame_mask, shift=(dy, dx), axis=(0, 1))
+            similarity = similarity_percentage(reference_mask, shifted_mask)
+            if similarity > best_similarity:
+                best_similarity = similarity
+                best_shift = (dx, dy)
+
+    return best_shift, best_similarity
 
 
 def similarity_percentage(mask1, mask2):
@@ -87,24 +103,38 @@ def stream_and_compare():
             cv2.imwrite(save_path, frame)
 
             img = cv2.imread(f'fotos/foto_actual.jpg')
-            frame_hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)  # Convierte a HSV
+            frame_hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)  # Convierte a HSV
 
             img_yellow_mask = cv2.inRange(frame_hsv, light_yellow, dark_yellow)  # Filtra amarillo
             save_path = os.path.join(save_folder, "foto_actual_segmentada.jpg")
             cv2.imwrite(save_path, img_yellow_mask)
 
-            similarity_ge = similarity_percentage(masks_ge[sequence_ge_counter], img_yellow_mask)
-            similarity_ne = similarity_percentage(masks_ne[sequence_ne_counter], img_yellow_mask)
-            if similarity_ge > 70:  
+
+            # Aplicamos la traslación y comparación
+            best_shift_ge, similarity_ge = translate_and_compare(img_yellow_mask, masks_ge[sequence_ge_counter])
+            best_shift_ne, similarity_ne = translate_and_compare(img_yellow_mask, masks_ne[sequence_ne_counter])
+
+            print(f"Mejor similitud para ge_{sequence_ge_counter}: {similarity_ge:.2f}% con desplazamiento {best_shift_ge}")
+            print(f"Mejor similitud para ne_{sequence_ne_counter}: {similarity_ne:.2f}% con desplazamiento {best_shift_ne}")
+
+            #similarity_ge = similarity_percentage(masks_ge[sequence_ge_counter], img_yellow_mask)
+            #similarity_ne = similarity_percentage(masks_ne[sequence_ne_counter], img_yellow_mask)
+            if sequence_ge_counter >= sequence_ne_counter and similarity_ge > 70:  
                 print(f"Foto coincide con máscara ge_{sequence_ge_counter}, similitud: {similarity_ge:.2f}%")
                 sequence_ge_counter += 1
-                sequence_ne_counter = 0  
+            elif sequence_ge_counter < sequence_ne_counter and similarity_ne > 70:  
+                print(f"Foto coincide con máscara ne_{sequence_ne_counter}, similitud: {similarity_ne:.2f}%")
+                sequence_ne_counter += 1
+            elif similarity_ge > 70:  
+                print(f"Foto coincide con máscara ge_{sequence_ge_counter}, similitud: {similarity_ge:.2f}%")
+                sequence_ge_counter += 1
+                sequence_ne_counter = 0 
             elif similarity_ne > 70:  
                 print(f"Foto coincide con máscara ne_{sequence_ne_counter}, similitud: {similarity_ne:.2f}%")
                 sequence_ne_counter += 1
                 sequence_ge_counter = 0 
             else:
-                print("Foto no coincide con ninguna máscara, similitud: {similarity_ge:.2f}%, reiniciando...")
+                print(f"Foto no coincide con ninguna máscara, reiniciando...")
                 sequence_ge_counter = 0
                 sequence_ne_counter = 0
 
@@ -115,7 +145,6 @@ def stream_and_compare():
                 print("Secuencia noche estrellada completada.")
                 break
 
-            cv2.imshow("Frame HSV", frame_hsv)
             cv2.imshow("Segmented Mask", img_yellow_mask)
 
 
